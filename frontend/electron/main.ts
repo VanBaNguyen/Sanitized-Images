@@ -1,6 +1,9 @@
 import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron';
 import * as path from 'path';
 import screenshot from 'screenshot-desktop';
+import { execFile } from 'child_process';
+import { tmpdir } from 'os';
+import { mkdtemp, readFile, unlink } from 'fs/promises';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -57,6 +60,25 @@ function registerShortcuts() {
 
   if (!ok1) console.warn('Failed to register CommandOrControl+4');
   if (!ok2) console.warn('Failed to register Control+4');
+
+  // Cmd/Ctrl + 3 (region selection)
+  const ok3 = globalShortcut.register('CommandOrControl+3', () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send('hotkey-select');
+    }
+  });
+  const ok4 = globalShortcut.register('Control+3', () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send('hotkey-select');
+    }
+  });
+
+  if (!ok3) console.warn('Failed to register CommandOrControl+3');
+  if (!ok4) console.warn('Failed to register Control+3');
 }
 
 function registerIpc() {
@@ -68,6 +90,40 @@ function registerIpc() {
     } catch (err: any) {
       console.error('screenshot failed', err);
       return { ok: false, error: err?.message || 'screenshot failed' };
+    }
+  });
+
+  ipcMain.handle('captureRegion', async () => {
+    if (process.platform !== 'darwin') {
+      return { ok: false, error: 'Region capture not implemented on this platform yet' };
+    }
+    try {
+      const dir = await mkdtemp(path.join(tmpdir(), 'pshot-'));
+      const file = path.join(dir, 'region.png');
+      const args = ['-i', '-r', '-x', '-t', 'png', file];
+
+      await new Promise<void>((resolve, reject) => {
+        const child = execFile('screencapture', args, (err) => {
+          if (err) return reject(err);
+          resolve();
+        });
+        // In case process cannot spawn
+        child.on('error', (e) => reject(e));
+      });
+
+      const buf = await readFile(file);
+      // Best effort clean-up
+      await unlink(file).catch(() => {});
+      const dataUrl = `data:image/png;base64,${buf.toString('base64')}`;
+      return { ok: true, dataUrl };
+    } catch (err: any) {
+      // User may cancel selection -> screencapture returns non-zero; surface a friendly message
+      const msg = err?.message || String(err);
+      if (/canceled|cancelled|65|255/i.test(msg)) {
+        return { ok: false, error: 'Selection canceled' };
+      }
+      console.error('region capture failed', err);
+      return { ok: false, error: msg };
     }
   });
 }
