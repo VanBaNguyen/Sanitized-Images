@@ -3,12 +3,22 @@ import { useEffect, useState } from 'react';
 function App() {
   const [img, setImg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<boolean>(false);
 
   const doCapture = async () => {
     setError(null);
     try {
       const dataUrl = await window.api.captureScreen();
       setImg(dataUrl);
+      // Auto-copy
+      try {
+        await window.api.copyImage(dataUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      } catch (e) {
+        // Non-fatal: keep image shown
+        console.warn('Clipboard copy failed', e);
+      }
     } catch (e: any) {
       setError(e?.message ?? 'Failed to capture screen');
     }
@@ -19,11 +29,30 @@ function App() {
     try {
       const dataUrl = await window.api.captureRegion();
       setImg(dataUrl);
+      // Auto-copy
+      try {
+        await window.api.copyImage(dataUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      } catch (e) {
+        console.warn('Clipboard copy failed', e);
+      }
     } catch (e: any) {
       const msg = e?.message ?? 'Failed to capture region';
       // If user canceled the selection, do not treat as an error
       if (/canceled|cancelled/i.test(String(msg))) return;
       setError(msg);
+    }
+  };
+
+  const copyCurrent = async () => {
+    if (!img) return;
+    try {
+      await window.api.copyImage(img);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to copy image');
     }
   };
 
@@ -68,6 +97,16 @@ function App() {
         >
           Capture region
         </button>
+        <button
+          onClick={copyCurrent}
+          disabled={!img}
+          className={`px-3 py-2 rounded text-white text-sm transition ${img ? 'bg-slate-700 hover:bg-slate-600 active:bg-slate-800' : 'bg-slate-800 opacity-50 cursor-not-allowed'}`}
+        >
+          Copy
+        </button>
+        {copied && (
+          <span className="text-emerald-400 text-sm">Copied</span>
+        )}
         <span className="text-slate-400 text-sm">First time on macOS, you'll need to grant Screen Recording permission.</span>
       </div>
 
