@@ -50,8 +50,8 @@ function App() {
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Screenshot Hotkeys</h1>
         <div className="text-sm text-slate-400">
-          <span className="mr-3">Full screen: <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Cmd</kbd>/<kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Ctrl</kbd> + <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">4</kbd></span>
-          <span>Region: <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Cmd</kbd>/<kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Ctrl</kbd> + <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">3</kbd></span>
+          <span className="mr-3">Full screen: <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Cmd</kbd>/<kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Ctrl</kbd> + <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">3</kbd></span>
+          <span>Region: <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Cmd</kbd>/<kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Ctrl</kbd> + <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">4</kbd></span>
         </div>
       </header>
 
@@ -84,7 +84,7 @@ function App() {
           />
         ) : (
           <div className="h-full w-full grid place-items-center text-slate-500">
-            No screenshot yet. Press Cmd/Ctrl + 4 (full) or Cmd/Ctrl + 3 (region), or use the buttons above.
+            No screenshot yet. Press Cmd/Ctrl + 3 (full) or Cmd/Ctrl + 4 (region), or use the buttons above.
           </div>
         )}
       </div>

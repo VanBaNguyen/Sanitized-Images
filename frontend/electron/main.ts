@@ -40,12 +40,12 @@ function createWindow() {
 }
 
 function registerShortcuts() {
-  // Cmd/Ctrl + 4
+  // Cmd/Ctrl + 4 (region selection)
   const ok1 = globalShortcut.register('CommandOrControl+4', () => {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
-      mainWindow.webContents.send('hotkey');
+      mainWindow.webContents.send('hotkey-select');
     }
   });
 
@@ -54,26 +54,26 @@ function registerShortcuts() {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
-      mainWindow.webContents.send('hotkey');
+      mainWindow.webContents.send('hotkey-select');
     }
   });
 
   if (!ok1) console.warn('Failed to register CommandOrControl+4');
   if (!ok2) console.warn('Failed to register Control+4');
 
-  // Cmd/Ctrl + 3 (region selection)
+  // Cmd/Ctrl + 3 (full screen)
   const ok3 = globalShortcut.register('CommandOrControl+3', () => {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
-      mainWindow.webContents.send('hotkey-select');
+      mainWindow.webContents.send('hotkey');
     }
   });
   const ok4 = globalShortcut.register('Control+3', () => {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
-      mainWindow.webContents.send('hotkey-select');
+      mainWindow.webContents.send('hotkey');
     }
   });
 
