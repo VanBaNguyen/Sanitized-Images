@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('api', {
     const res = await ipcRenderer.invoke('copyImage', dataUrl);
     if (!res?.ok) throw new Error(res?.error || 'Failed to copy image to clipboard');
   },
+  saveImage: async (dataUrl: string): Promise<string | null> => {
+    const res = await ipcRenderer.invoke('saveImage', dataUrl);
+    if (res?.ok && res.path) return res.path as string;
+    if (res?.canceled) return null;
+    throw new Error(res?.error || 'Failed to save image');
+  },
   displayed: (meta?: any) => {
     ipcRenderer.send('displayed', meta);
   },

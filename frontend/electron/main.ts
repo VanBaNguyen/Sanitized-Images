@@ -1,11 +1,33 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, clipboard, nativeImage } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, clipboard, nativeImage, dialog } from 'electron';
 import * as path from 'path';
 import screenshot from 'screenshot-desktop';
 import { execFile } from 'child_process';
 import { tmpdir } from 'os';
-import { mkdtemp, readFile, unlink } from 'fs/promises';
+import { mkdtemp, readFile, unlink, writeFile, utimes, chmod } from 'fs/promises';
+import { randomBytes } from 'crypto';
 
 let mainWindow: BrowserWindow | null = null;
+
+async function sanitizeInMain(dataUrl: string): Promise<string> {
+  const scriptPath = path.resolve(__dirname, '../../backend/image_sanitizer.py');
+  const args = [scriptPath, '--output-format', 'PNG', '--mode', 'data-url'];
+  const out: string = await new Promise((resolve, reject) => {
+    const child = execFile('python3', args, { maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        const msg = stderr?.toString() || err.message;
+        return reject(new Error(msg));
+      }
+      resolve(stdout?.toString() ?? '');
+    });
+    child.on('error', (e) => reject(e));
+    // feed data URL via stdin
+    child.stdin?.write(dataUrl);
+    child.stdin?.end();
+  });
+  if (!out) throw new Error('Sanitizer returned empty output');
+  if (!out.startsWith('data:image/')) throw new Error('Invalid sanitizer output');
+  return out;
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -168,10 +190,12 @@ function registerIpc() {
   // Copy to clipboard (logged in main so it shows in terminal)
   ipcMain.handle('copyImage', async (_evt, dataUrl: string) => {
     try {
-      const img = nativeImage.createFromDataURL(dataUrl);
+      // Ensure sanitized before copying; if it fails, abort
+      const sanitized = await sanitizeInMain(dataUrl);
+      const img = nativeImage.createFromDataURL(sanitized);
       const { width, height } = img.getSize();
       clipboard.writeImage(img);
-      console.log('[main] clipboard: wrote image', { width, height });
+      console.log('[main] clipboard: wrote image', { width, height, sanitized: true });
       return { ok: true };
     } catch (err: any) {
       console.error('[main] clipboard: failed', err);
@@ -185,6 +209,53 @@ function registerIpc() {
       console.log('[main] display: showing image', meta || {});
     } catch {
       console.log('[main] display: shown');
+    }
+  });
+
+  // Save image to disk
+  ipcMain.handle('saveImage', async (_evt, dataUrl: string) => {
+    try {
+      console.log('[main] save: start');
+      if (!dataUrl?.startsWith('data:image/')) {
+        return { ok: false, error: 'Invalid image data' };
+      }
+      // Sanitize first to guarantee clean bytes and determine final mime; if it fails, abort
+      const sanitized = await sanitizeInMain(dataUrl);
+      const m = /^data:(?<mime>[^;]+);base64,(?<data>.+)$/.exec(sanitized);
+      if (!m || !m.groups) return { ok: false, error: 'Malformed data URL' };
+      const mime = (m.groups.mime as string).toLowerCase();
+      const b64 = m.groups.data as string;
+      const buf = Buffer.from(b64, 'base64');
+      const ext = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : (mime.includes('png') ? 'png' : 'png');
+      const rand = randomBytes(4).toString('hex');
+      const defaultName = `img_${rand}.${ext}`;
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Save screenshot',
+        defaultPath: defaultName,
+        filters: [
+          { name: 'PNG', extensions: ['png'] },
+          { name: 'JPEG', extensions: ['jpg', 'jpeg'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+      });
+      if (canceled || !filePath) {
+        console.log('[main] save: canceled');
+        return { ok: false, canceled: true };
+      }
+      await writeFile(filePath, buf);
+      // Normalize file metadata (times/permissions) similar to backend behavior
+      try {
+        const epoch = new Date('2000-01-01T00:00:00Z');
+        await utimes(filePath, epoch, epoch);
+      } catch {}
+      try {
+        await chmod(filePath, 0o644);
+      } catch {}
+      console.log('[main] save: success', { path: filePath, bytes: buf.length, randomized: defaultName });
+      return { ok: true, path: filePath };
+    } catch (err: any) {
+      console.error('[main] save: failed', err);
+      return { ok: false, error: err?.message || 'Failed to save image' };
     }
   });
 }

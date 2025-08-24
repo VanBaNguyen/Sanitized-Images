@@ -4,6 +4,8 @@ function App() {
   const [img, setImg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [saved, setSaved] = useState<boolean>(false);
 
   const doCapture = async () => {
     setError(null);
@@ -70,6 +72,23 @@ function App() {
     }
   };
 
+  const saveCurrent = async () => {
+    if (!img || saving) return;
+    setError(null);
+    setSaving(true);
+    try {
+      const path = await window.api.saveImage(img);
+      if (path) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1500);
+      }
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to save image');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   useEffect(() => {
     const off = window.api.onHotkey(() => {
       void doCapture();
@@ -118,8 +137,18 @@ function App() {
         >
           Copy
         </button>
+        <button
+          onClick={saveCurrent}
+          disabled={!img || saving}
+          className={`px-3 py-2 rounded text-white text-sm transition ${img && !saving ? 'bg-slate-700 hover:bg-slate-600 active:bg-slate-800' : 'bg-slate-800 opacity-50 cursor-not-allowed'}`}
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
         {copied && (
           <span className="text-emerald-400 text-sm">Copied</span>
+        )}
+        {saved && (
+          <span className="text-emerald-400 text-sm">Saved</span>
         )}
         <span className="text-slate-400 text-sm">First time on macOS, you'll need to grant Screen Recording permission.</span>
       </div>

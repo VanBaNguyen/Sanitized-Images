@@ -9,6 +9,7 @@ declare global {
       captureRegion: () => Promise<string>;
       sanitizeDataUrl: (dataUrl: string) => Promise<string>;
       copyImage: (dataUrl: string) => Promise<void>;
+      saveImage: (dataUrl: string) => Promise<string | null>;
       displayed: (meta?: any) => void;
     };
   }
