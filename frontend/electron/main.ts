@@ -50,6 +50,30 @@ function createWindow() {
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
   if (devServerUrl) {
+    // In development, enforce a strict CSP that allows loading from the Vite dev server
+    try {
+      const u = new URL(devServerUrl);
+      const origin = `${u.protocol}//${u.host}`; // e.g., http://localhost:5173
+      const wsOrigin = origin.replace(/^http/, 'ws');
+      const csp = [
+        `default-src 'self' ${origin}`,
+        // Allow inline scripts for Vite React Fast Refresh preamble (no unsafe-eval)
+        `script-src 'self' ${origin} 'unsafe-inline'`,
+        `style-src 'self' 'unsafe-inline'`,
+        `img-src 'self' data: blob:`,
+        `font-src 'self'`,
+        `connect-src 'self' ${origin} ${wsOrigin}`,
+        `object-src 'none'`,
+      ].join('; ');
+      const ses = mainWindow.webContents.session;
+      ses.webRequest.onHeadersReceived((details, callback) => {
+        const headers = details.responseHeaders || {};
+        headers['Content-Security-Policy'] = [csp];
+        callback({ responseHeaders: headers });
+      });
+    } catch (e) {
+      console.warn('Failed to apply dev CSP', e);
+    }
     mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
