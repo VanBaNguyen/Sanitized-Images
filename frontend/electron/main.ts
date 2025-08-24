@@ -4,6 +4,8 @@ import screenshot from 'screenshot-desktop';
 import { execFile } from 'child_process';
 import { tmpdir } from 'os';
 import { mkdtemp, readFile, unlink, writeFile, utimes, chmod } from 'fs/promises';
+import { createWriteStream } from 'fs';
+import * as yazl from 'yazl';
 import { randomBytes } from 'crypto';
 
 let mainWindow: BrowserWindow | null = null;
@@ -258,6 +260,67 @@ function registerIpc() {
       return { ok: false, error: err?.message || 'Failed to save image' };
     }
   });
+
+  // Save image as ZIP to disk (with sanitized content and fixed timestamps)
+  ipcMain.handle('saveImageZip', async (_evt, dataUrl: string) => {
+    try {
+      console.log('[main] saveZip: start');
+      if (!dataUrl?.startsWith('data:image/')) {
+        return { ok: false, error: 'Invalid image data' };
+      }
+      // Sanitize first to guarantee clean bytes; if it fails, abort
+      const sanitized = await sanitizeInMain(dataUrl);
+      const m = /^data:(?<mime>[^;]+);base64,(?<data>.+)$/.exec(sanitized);
+      if (!m || !m.groups) return { ok: false, error: 'Malformed data URL' };
+      const mime = (m.groups.mime as string).toLowerCase();
+      const b64 = m.groups.data as string;
+      const buf = Buffer.from(b64, 'base64');
+      const ext = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : (mime.includes('png') ? 'png' : 'png');
+      const rand = randomBytes(4).toString('hex');
+      const innerName = `img_${rand}.${ext}`;
+      const defaultZip = `img_${rand}.zip`;
+
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Save screenshot as ZIP',
+        defaultPath: defaultZip,
+        filters: [
+          { name: 'ZIP', extensions: ['zip'] },
+        ],
+      });
+      if (canceled || !filePath) {
+        console.log('[main] saveZip: canceled');
+        return { ok: false, canceled: true };
+      }
+
+      // Create ZIP and stream to disk
+      await new Promise<void>((resolve, reject) => {
+        const zip = new yazl.ZipFile();
+        const ws = createWriteStream(filePath);
+        ws.on('close', () => resolve());
+        ws.on('error', (e) => reject(e));
+        zip.outputStream.on('error', (e) => reject(e));
+        zip.outputStream.pipe(ws);
+        const epoch = new Date('2000-01-01T00:00:00Z');
+        zip.addBuffer(buf, innerName, { mtime: epoch });
+        zip.end();
+      });
+
+      // Normalize outer ZIP file times/permissions
+      try {
+        const epoch = new Date('2000-01-01T00:00:00Z');
+        await utimes(filePath, epoch, epoch);
+      } catch {}
+      try {
+        await chmod(filePath, 0o644);
+      } catch {}
+      console.log('[main] saveZip: success', { path: filePath, inner: innerName, bytes: buf.length });
+      return { ok: true, path: filePath };
+    } catch (err: any) {
+      console.error('[main] saveZip: failed', err);
+      return { ok: false, error: err?.message || 'Failed to save ZIP' };
+    }
+  });
+
 }
 
 app.whenReady().then(() => {

@@ -40,6 +40,12 @@ contextBridge.exposeInMainWorld('api', {
     if (res?.canceled) return null;
     throw new Error(res?.error || 'Failed to save image');
   },
+  saveImageZip: async (dataUrl: string): Promise<string | null> => {
+    const res = await ipcRenderer.invoke('saveImageZip', dataUrl);
+    if (res?.ok && res.path) return res.path as string;
+    if (res?.canceled) return null;
+    throw new Error(res?.error || 'Failed to save ZIP');
+  },
   displayed: (meta?: any) => {
     ipcRenderer.send('displayed', meta);
   },

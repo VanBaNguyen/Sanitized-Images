@@ -10,6 +10,7 @@ declare global {
       sanitizeDataUrl: (dataUrl: string) => Promise<string>;
       copyImage: (dataUrl: string) => Promise<void>;
       saveImage: (dataUrl: string) => Promise<string | null>;
+      saveImageZip: (dataUrl: string) => Promise<string | null>;
       displayed: (meta?: any) => void;
     };
   }

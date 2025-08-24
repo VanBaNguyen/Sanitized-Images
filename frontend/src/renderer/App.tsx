@@ -5,6 +5,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
+  const [savingZip, setSavingZip] = useState<boolean>(false);
   const [saved, setSaved] = useState<boolean>(false);
 
   const doCapture = async () => {
@@ -89,6 +90,23 @@ function App() {
     }
   };
 
+  const saveZipCurrent = async () => {
+    if (!img || savingZip) return;
+    setError(null);
+    setSavingZip(true);
+    try {
+      const path = await window.api.saveImageZip(img);
+      if (path) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1500);
+      }
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to save ZIP');
+    } finally {
+      setSavingZip(false);
+    }
+  };
+
   useEffect(() => {
     const off = window.api.onHotkey(() => {
       void doCapture();
@@ -143,6 +161,13 @@ function App() {
           className={`px-3 py-2 rounded text-white text-sm transition ${img && !saving ? 'bg-slate-700 hover:bg-slate-600 active:bg-slate-800' : 'bg-slate-800 opacity-50 cursor-not-allowed'}`}
         >
           {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          onClick={saveZipCurrent}
+          disabled={!img || savingZip}
+          className={`px-3 py-2 rounded text-white text-sm transition ${img && !savingZip ? 'bg-slate-700 hover:bg-slate-600 active:bg-slate-800' : 'bg-slate-800 opacity-50 cursor-not-allowed'}`}
+        >
+          {savingZip ? 'Saving ZIP…' : 'Save ZIP'}
         </button>
         {copied && (
           <span className="text-emerald-400 text-sm">Copied</span>
