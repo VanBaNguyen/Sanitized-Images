@@ -7,7 +7,9 @@ declare global {
       onSelectHotkey: (cb: () => void) => () => void;
       captureScreen: () => Promise<string>;
       captureRegion: () => Promise<string>;
+      sanitizeDataUrl: (dataUrl: string) => Promise<string>;
       copyImage: (dataUrl: string) => Promise<void>;
+      displayed: (meta?: any) => void;
     };
   }
 }

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, clipboard, nativeImage } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
 console.log('[preload] loaded (IPC-only)');
 
@@ -25,12 +25,16 @@ contextBridge.exposeInMainWorld('api', {
     if (res?.ok && res.dataUrl) return res.dataUrl as string;
     throw new Error(res?.error || 'Region capture failed');
   },
+  sanitizeDataUrl: async (dataUrl: string) => {
+    const res = await ipcRenderer.invoke('sanitizeDataUrl', dataUrl);
+    if (res?.ok && res.dataUrl) return res.dataUrl as string;
+    throw new Error(res?.error || 'Sanitize failed');
+  },
   copyImage: async (dataUrl: string) => {
-    try {
-      const img = nativeImage.createFromDataURL(dataUrl);
-      clipboard.writeImage(img);
-    } catch (e: any) {
-      throw new Error(e?.message || 'Failed to copy image to clipboard');
-    }
+    const res = await ipcRenderer.invoke('copyImage', dataUrl);
+    if (!res?.ok) throw new Error(res?.error || 'Failed to copy image to clipboard');
+  },
+  displayed: (meta?: any) => {
+    ipcRenderer.send('displayed', meta);
   },
 });

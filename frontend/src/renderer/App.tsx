@@ -9,10 +9,17 @@ function App() {
     setError(null);
     try {
       const dataUrl = await window.api.captureScreen();
-      setImg(dataUrl);
+      let sanitized = dataUrl;
+      try {
+        sanitized = await window.api.sanitizeDataUrl(dataUrl);
+      } catch (e: any) {
+        console.warn('Sanitize failed, falling back to original', e);
+        setError(e?.message ?? 'Sanitize failed; using original image');
+      }
+      setImg(sanitized);
       // Auto-copy
       try {
-        await window.api.copyImage(dataUrl);
+        await window.api.copyImage(sanitized);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       } catch (e) {
@@ -28,10 +35,17 @@ function App() {
     setError(null);
     try {
       const dataUrl = await window.api.captureRegion();
-      setImg(dataUrl);
+      let sanitized = dataUrl;
+      try {
+        sanitized = await window.api.sanitizeDataUrl(dataUrl);
+      } catch (e: any) {
+        console.warn('Sanitize failed, falling back to original', e);
+        setError(e?.message ?? 'Sanitize failed; using original image');
+      }
+      setImg(sanitized);
       // Auto-copy
       try {
-        await window.api.copyImage(dataUrl);
+        await window.api.copyImage(sanitized);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       } catch (e) {
@@ -120,6 +134,10 @@ function App() {
             src={img}
             alt="Latest screenshot"
             className="max-w-full h-auto block mx-auto"
+            onLoad={(e) => {
+              const t = e.currentTarget;
+              window.api.displayed?.({ width: t.naturalWidth, height: t.naturalHeight });
+            }}
           />
         ) : (
           <div className="h-full w-full grid place-items-center text-slate-500">
