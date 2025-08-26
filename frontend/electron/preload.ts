@@ -49,4 +49,11 @@ contextBridge.exposeInMainWorld('api', {
   displayed: (meta?: any) => {
     ipcRenderer.send('displayed', meta);
   },
+  getHotkeySettings: async () => {
+    return await ipcRenderer.invoke('getHotkeySettings');
+  },
+  setHotkeySettings: async (settings: any) => {
+    const res = await ipcRenderer.invoke('setHotkeySettings', settings);
+    if (!res?.ok) throw new Error(res?.error || 'Failed to update settings');
+  },
 });

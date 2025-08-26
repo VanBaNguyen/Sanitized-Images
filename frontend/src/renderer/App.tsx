@@ -8,6 +8,11 @@ function App() {
   const [savingZip, setSavingZip] = useState<boolean>(false);
   const [saved, setSaved] = useState<boolean>(false);
   const [uploading, setUploading] = useState<boolean>(false);
+  const [settings, setSettings] = useState<HotkeySettings>({
+    region: { modifiers: { shift: false, alt: false, command: false } },
+    full: { modifiers: { shift: false, alt: false, command: false } },
+  });
+  const [showSettings, setShowSettings] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const doCapture = async () => {
@@ -160,15 +165,98 @@ function App() {
     };
   }, []);
 
+  // Load settings on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await window.api.getHotkeySettings();
+        setSettings(s);
+      } catch (e) {
+        console.warn('Failed to load hotkey settings', e);
+      }
+    })();
+  }, []);
+
+  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent);
+  const labelForMods = (mods: HotkeyModifiers, baseKey: string) => {
+    const keys: string[] = ['Ctrl'];
+    if (isMac && mods.command) keys.push('Cmd');
+    if (mods.shift) keys.push('Shift');
+    if (mods.alt) keys.push(isMac ? 'Option' : 'Alt');
+    keys.push(baseKey);
+    return keys.map(k => (
+      `<kbd class=\"px-1 py-0.5 rounded bg-slate-800 border border-slate-700\">${k}</kbd>`
+    )).join(' + ');
+  };
+
+  const updateModifier = (target: 'full' | 'region', key: keyof HotkeyModifiers, val: boolean) => {
+    const next: HotkeySettings = {
+      full: { modifiers: { ...settings.full.modifiers, ...(target === 'full' ? { [key]: val } : {}) } as HotkeyModifiers },
+      region: { modifiers: { ...settings.region.modifiers, ...(target === 'region' ? { [key]: val } : {}) } as HotkeyModifiers },
+    };
+    setSettings(next);
+    // Persist and re-register shortcuts
+    void window.api.setHotkeySettings(next).catch((e) => {
+      console.warn('Failed to save hotkey settings', e);
+    });
+  };
+
   return (
     <div className="min-h-full w-full p-6 flex flex-col gap-4">
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Screenshot Hotkeys</h1>
-        <div className="text-sm text-slate-400">
-          <span className="mr-3">Full screen: <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Cmd</kbd>/<kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Ctrl</kbd> + <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">3</kbd></span>
-          <span>Region: <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Cmd</kbd>/<kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">Ctrl</kbd> + <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700">4</kbd></span>
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-slate-400">
+            <span className="mr-3">Full screen: <span dangerouslySetInnerHTML={{ __html: labelForMods(settings.full.modifiers, '3') }} /></span>
+            <span>Region: <span dangerouslySetInnerHTML={{ __html: labelForMods(settings.region.modifiers, '4') }} /></span>
+          </div>
+          <button
+            onClick={() => setShowSettings(v => !v)}
+            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs"
+          >
+            {showSettings ? 'Close Settings' : 'Settings'}
+          </button>
         </div>
       </header>
+
+      {showSettings && (
+        <div className="rounded border border-slate-800 bg-slate-950 p-4 text-sm text-slate-200">
+          <div className="font-semibold mb-2">Configure additional modifiers (always with Ctrl)</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="font-medium">Full screen (key 3)</div>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={settings.full.modifiers.shift} onChange={e => updateModifier('full', 'shift', e.target.checked)} />
+                Shift
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={settings.full.modifiers.alt} onChange={e => updateModifier('full', 'alt', e.target.checked)} />
+                {isMac ? 'Option' : 'Alt'}
+              </label>
+              <label className={`flex items-center gap-2 ${!isMac ? 'opacity-50' : ''}`}> 
+                <input type="checkbox" disabled={!isMac} checked={settings.full.modifiers.command} onChange={e => updateModifier('full', 'command', e.target.checked)} />
+                Command (macOS)
+              </label>
+            </div>
+            <div className="space-y-2">
+              <div className="font-medium">Region (key 4)</div>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={settings.region.modifiers.shift} onChange={e => updateModifier('region', 'shift', e.target.checked)} />
+                Shift
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={settings.region.modifiers.alt} onChange={e => updateModifier('region', 'alt', e.target.checked)} />
+                {isMac ? 'Option' : 'Alt'}
+              </label>
+              <label className={`flex items-center gap-2 ${!isMac ? 'opacity-50' : ''}`}> 
+                <input type="checkbox" disabled={!isMac} checked={settings.region.modifiers.command} onChange={e => updateModifier('region', 'command', e.target.checked)} />
+                Command (macOS)
+              </label>
+            </div>
+          </div>
+          <div className="mt-3 text-slate-400">Changes apply immediately.</div>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button
@@ -243,7 +331,12 @@ function App() {
           />
         ) : (
           <div className="h-full w-full grid place-items-center text-slate-500">
-            No screenshot yet. Press Cmd/Ctrl + 3 (full) or Cmd/Ctrl + 4 (region), or use the buttons above.
+            <div className="text-center">
+              <div>No screenshot yet.</div>
+              <div className="mt-1">Press <span dangerouslySetInnerHTML={{ __html: labelForMods(settings.full.modifiers, '3') }} /> (full)</div>
+              <div>or <span dangerouslySetInnerHTML={{ __html: labelForMods(settings.region.modifiers, '4') }} /> (region)</div>
+              <div className="mt-1">Or use the buttons above.</div>
+            </div>
           </div>
         )}
       </div>

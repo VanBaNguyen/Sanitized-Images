@@ -10,6 +10,65 @@ import { randomBytes } from 'crypto';
 
 let mainWindow: BrowserWindow | null = null;
 
+// Settings: additional modifiers required (in addition to Control) for each action
+type HotkeyModifiers = {
+  shift: boolean;
+  alt: boolean; // Alt on Windows/Linux, Option on macOS
+  command: boolean; // Command on macOS only
+};
+
+type HotkeySettings = {
+  region: { modifiers: HotkeyModifiers }; // base key: 4
+  full: { modifiers: HotkeyModifiers };   // base key: 3
+};
+
+const defaultSettings: HotkeySettings = {
+  region: { modifiers: { shift: false, alt: false, command: false } },
+  full: { modifiers: { shift: false, alt: false, command: false } },
+};
+
+let currentSettings: HotkeySettings = defaultSettings;
+
+function getSettingsPath(): string {
+  const userDir = app.getPath('userData');
+  return path.join(userDir, 'settings.json');
+}
+
+async function loadSettings(): Promise<HotkeySettings> {
+  try {
+    const p = getSettingsPath();
+    const txt = await readFile(p, 'utf8');
+    const parsed = JSON.parse(txt);
+    // Basic normalization
+    const norm = (m: any): HotkeyModifiers => ({
+      shift: !!m?.shift,
+      alt: !!m?.alt,
+      command: !!m?.command,
+    });
+    return {
+      region: { modifiers: norm(parsed?.region?.modifiers) },
+      full: { modifiers: norm(parsed?.full?.modifiers) },
+    };
+  } catch {
+    return defaultSettings;
+  }
+}
+
+async function saveSettings(s: HotkeySettings): Promise<void> {
+  const p = getSettingsPath();
+  const txt = JSON.stringify(s, null, 2);
+  await writeFile(p, txt, 'utf8');
+}
+
+function acceleratorFor(baseKey: string, mods: HotkeyModifiers): string {
+  const parts: string[] = ['Control'];
+  if (process.platform === 'darwin' && mods.command) parts.push('Command');
+  if (mods.shift) parts.push('Shift');
+  if (mods.alt) parts.push(process.platform === 'darwin' ? 'Option' : 'Alt');
+  parts.push(baseKey);
+  return parts.join('+');
+}
+
 async function sanitizeInMain(dataUrl: string): Promise<string> {
   const scriptPath = path.resolve(__dirname, '../../backend/image_sanitizer.py');
   const args = [scriptPath, '--output-format', 'PNG', '--mode', 'data-url'];
@@ -89,45 +148,29 @@ function createWindow() {
 }
 
 function registerShortcuts() {
-  // Cmd/Ctrl + 4 (region selection)
-  const ok1 = globalShortcut.register('CommandOrControl+4', () => {
+  // Clear any existing registrations to avoid duplicates
+  try { globalShortcut.unregisterAll(); } catch {}
+
+  const regionAccel = acceleratorFor('4', currentSettings.region.modifiers);
+  const fullAccel = acceleratorFor('3', currentSettings.full.modifiers);
+
+  const okRegion = globalShortcut.register(regionAccel, () => {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
       mainWindow.webContents.send('hotkey-select');
     }
   });
+  if (!okRegion) console.warn('Failed to register hotkey for region:', regionAccel);
 
-  // Also allow Control+4 explicitly (on mac, CommandOrControl maps to Command)
-  const ok2 = globalShortcut.register('Control+4', () => {
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
-      mainWindow.webContents.send('hotkey-select');
-    }
-  });
-
-  if (!ok1) console.warn('Failed to register CommandOrControl+4');
-  if (!ok2) console.warn('Failed to register Control+4');
-
-  // Cmd/Ctrl + 3 (full screen)
-  const ok3 = globalShortcut.register('CommandOrControl+3', () => {
+  const okFull = globalShortcut.register(fullAccel, () => {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
       mainWindow.webContents.send('hotkey');
     }
   });
-  const ok4 = globalShortcut.register('Control+3', () => {
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
-      mainWindow.webContents.send('hotkey');
-    }
-  });
-
-  if (!ok3) console.warn('Failed to register CommandOrControl+3');
-  if (!ok4) console.warn('Failed to register Control+3');
+  if (!okFull) console.warn('Failed to register hotkey for full:', fullAccel);
 }
 
 function registerIpc() {
@@ -345,9 +388,30 @@ function registerIpc() {
     }
   });
 
+  // Settings IPC
+  ipcMain.handle('getHotkeySettings', async () => {
+    return currentSettings;
+  });
+
+  ipcMain.handle('setHotkeySettings', async (_evt, incoming: any) => {
+    const normMods = (m: any): HotkeyModifiers => ({
+      shift: !!m?.shift,
+      alt: !!m?.alt,
+      command: !!m?.command,
+    });
+    const next: HotkeySettings = {
+      region: { modifiers: normMods(incoming?.region?.modifiers) },
+      full: { modifiers: normMods(incoming?.full?.modifiers) },
+    };
+    currentSettings = next;
+    await saveSettings(next);
+    registerShortcuts();
+    return { ok: true };
+  });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  currentSettings = await loadSettings();
   createWindow();
   registerShortcuts();
   registerIpc();
