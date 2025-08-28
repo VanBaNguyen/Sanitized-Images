@@ -20,14 +20,17 @@ type HotkeyModifiers = {
 type HotkeySettings = {
   region: { modifiers: HotkeyModifiers }; // base key: 4
   full: { modifiers: HotkeyModifiers };   // base key: 3
+  toggle: { accelerator: string };        // single-key accelerator, e.g. 'F8'
 };
 
 const defaultSettings: HotkeySettings = {
   region: { modifiers: { shift: false, alt: false, command: false } },
   full: { modifiers: { shift: false, alt: false, command: false } },
+  toggle: { accelerator: 'F8' },
 };
 
 let currentSettings: HotkeySettings = defaultSettings;
+let toggleRegistered = false;
 
 function getSettingsPath(): string {
   const userDir = app.getPath('userData');
@@ -45,9 +48,11 @@ async function loadSettings(): Promise<HotkeySettings> {
       alt: !!m?.alt,
       command: !!m?.command,
     });
+    const accel = String(parsed?.toggle?.accelerator || '').trim();
     return {
       region: { modifiers: norm(parsed?.region?.modifiers) },
       full: { modifiers: norm(parsed?.full?.modifiers) },
+      toggle: { accelerator: accel || defaultSettings.toggle.accelerator },
     };
   } catch {
     return defaultSettings;
@@ -147,12 +152,23 @@ function createWindow() {
   // IPC handlers are registered in registerIpc()
 }
 
+function toggleWindowVisibility() {
+  if (!mainWindow) return;
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
 function registerShortcuts() {
   // Clear any existing registrations to avoid duplicates
   try { globalShortcut.unregisterAll(); } catch {}
 
   const regionAccel = acceleratorFor('4', currentSettings.region.modifiers);
   const fullAccel = acceleratorFor('3', currentSettings.full.modifiers);
+  const toggleAccel = currentSettings.toggle?.accelerator || defaultSettings.toggle.accelerator;
 
   const okRegion = globalShortcut.register(regionAccel, () => {
     if (mainWindow) {
@@ -171,6 +187,28 @@ function registerShortcuts() {
     }
   });
   if (!okFull) console.warn('Failed to register hotkey for full:', fullAccel);
+
+  // Toggle window visibility (single-key)
+  const okToggle = globalShortcut.register(toggleAccel, () => {
+    toggleWindowVisibility();
+  });
+  toggleRegistered = !!okToggle;
+  if (!okToggle) console.warn('Failed to register toggle hotkey:', toggleAccel);
+}
+
+function unregisterToggleShortcut() {
+  try {
+    const toggleAccel = currentSettings.toggle?.accelerator || defaultSettings.toggle.accelerator;
+    globalShortcut.unregister(toggleAccel);
+    toggleRegistered = false;
+  } catch {}
+}
+
+function registerToggleShortcut() {
+  const toggleAccel = currentSettings.toggle?.accelerator || defaultSettings.toggle.accelerator;
+  const ok = globalShortcut.register(toggleAccel, toggleWindowVisibility);
+  toggleRegistered = !!ok;
+  if (!ok) console.warn('Failed to (re)register toggle hotkey:', toggleAccel);
 }
 
 function registerIpc() {
@@ -402,11 +440,32 @@ function registerIpc() {
     const next: HotkeySettings = {
       region: { modifiers: normMods(incoming?.region?.modifiers) },
       full: { modifiers: normMods(incoming?.full?.modifiers) },
+      toggle: { accelerator: String(incoming?.toggle?.accelerator || '').trim() || defaultSettings.toggle.accelerator },
     };
     currentSettings = next;
     await saveSettings(next);
     registerShortcuts();
+    return { ok: true, registered: toggleRegistered };
+  });
+
+  // Window visibility controls
+  ipcMain.handle('toggleWindow', async () => {
+    toggleWindowVisibility();
+    return { ok: true, visible: !!mainWindow?.isVisible() };
+  });
+
+  ipcMain.handle('getWindowVisibility', async () => {
+    return { ok: true, visible: !!mainWindow?.isVisible() };
+  });
+
+  // Temporarily suspend/resume the toggle shortcut (for recording new shortcut in UI)
+  ipcMain.handle('suspendToggleShortcut', async () => {
+    unregisterToggleShortcut();
     return { ok: true };
+  });
+  ipcMain.handle('resumeToggleShortcut', async () => {
+    registerToggleShortcut();
+    return { ok: true, registered: toggleRegistered };
   });
 }
 

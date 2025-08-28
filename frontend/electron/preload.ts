@@ -52,8 +52,28 @@ contextBridge.exposeInMainWorld('api', {
   getHotkeySettings: async () => {
     return await ipcRenderer.invoke('getHotkeySettings');
   },
-  setHotkeySettings: async (settings: any) => {
+  setHotkeySettings: async (settings: any): Promise<boolean> => {
     const res = await ipcRenderer.invoke('setHotkeySettings', settings);
     if (!res?.ok) throw new Error(res?.error || 'Failed to update settings');
+    return !!res.registered;
+  },
+  toggleWindow: async (): Promise<boolean> => {
+    const res = await ipcRenderer.invoke('toggleWindow');
+    if (!res?.ok) throw new Error(res?.error || 'Failed to toggle window');
+    return !!res.visible;
+  },
+  getWindowVisibility: async (): Promise<boolean> => {
+    const res = await ipcRenderer.invoke('getWindowVisibility');
+    if (!res?.ok) throw new Error(res?.error || 'Failed to get window visibility');
+    return !!res.visible;
+  },
+  suspendToggleShortcut: async (): Promise<void> => {
+    const res = await ipcRenderer.invoke('suspendToggleShortcut');
+    if (!res?.ok) throw new Error(res?.error || 'Failed to suspend toggle hotkey');
+  },
+  resumeToggleShortcut: async (): Promise<boolean> => {
+    const res = await ipcRenderer.invoke('resumeToggleShortcut');
+    if (!res?.ok) throw new Error(res?.error || 'Failed to resume toggle hotkey');
+    return !!res.registered;
   },
 });

@@ -11,8 +11,11 @@ function App() {
   const [settings, setSettings] = useState<HotkeySettings>({
     region: { modifiers: { shift: false, alt: false, command: false } },
     full: { modifiers: { shift: false, alt: false, command: false } },
+    toggle: { accelerator: 'F8' },
   });
   const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [visible, setVisible] = useState<boolean>(true);
+  const [recordingToggle, setRecordingToggle] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const doCapture = async () => {
@@ -177,6 +180,92 @@ function App() {
     })();
   }, []);
 
+  // Load initial window visibility on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const vis = await window.api.getWindowVisibility();
+        setVisible(vis);
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  // When window becomes visible again (e.g., via hotkey), refresh visibility state
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        void window.api.getWindowVisibility().then(setVisible).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
+  // Build Electron accelerator from KeyboardEvent
+  const toAcceleratorFromEvent = (e: KeyboardEvent): string | null => {
+    const modOnly = ['Control', 'Shift', 'Alt', 'AltGraph', 'Meta', 'OS'];
+    let key = e.key;
+    if (!key) return null;
+    if (modOnly.includes(key)) return null; // need a non-modifier base key
+    // Normalize base key
+    if (key === ' ') key = 'Space';
+    if (key === 'Esc') key = 'Escape';
+    if (key.startsWith('Arrow')) key = key.replace('Arrow', ''); // ArrowUp -> Up
+    if (key === 'CapsLock') key = 'Capslock';
+    if (key === 'NumLock') key = 'Numlock';
+    if (key.length === 1) {
+      key = key === '+' ? 'Plus' : key.toUpperCase();
+    }
+    const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent);
+    const mods: string[] = [];
+    if (e.ctrlKey) mods.push('Control');
+    if (e.shiftKey) mods.push('Shift');
+    if (e.altKey) mods.push(isMac ? 'Option' : 'Alt');
+    if (e.metaKey) mods.push('Command');
+    return [...mods, key].join('+');
+  };
+
+  // Recording flow for toggle accelerator
+  useEffect(() => {
+    if (!recordingToggle) return;
+    let done = false;
+    const onKey = async (ev: KeyboardEvent) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (done) return;
+      const accel = toAcceleratorFromEvent(ev);
+      if (!accel) return; // wait for a real key
+      done = true;
+      try {
+        const next: HotkeySettings = { full: settings.full, region: settings.region, toggle: { accelerator: accel } };
+        setSettings(next);
+        const registered = await window.api.setHotkeySettings(next);
+        if (!registered) {
+          setError(`Failed to register shortcut: ${accel}. Try another.`);
+        } else {
+          setError(null);
+        }
+      } catch (e: any) {
+        setError(e?.message ?? 'Failed to set shortcut');
+      } finally {
+        setRecordingToggle(false);
+        try {
+          await window.api.resumeToggleShortcut();
+        } catch {}
+      }
+    };
+    const start = async () => {
+      try { await window.api.suspendToggleShortcut(); } catch {}
+      window.addEventListener('keydown', onKey, true);
+    };
+    void start();
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [recordingToggle, settings.full, settings.region]);
+
   const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent);
   const labelForMods = (mods: HotkeyModifiers, baseKey: string) => {
     const keys: string[] = ['Ctrl'];
@@ -193,11 +282,24 @@ function App() {
     const next: HotkeySettings = {
       full: { modifiers: { ...settings.full.modifiers, ...(target === 'full' ? { [key]: val } : {}) } as HotkeyModifiers },
       region: { modifiers: { ...settings.region.modifiers, ...(target === 'region' ? { [key]: val } : {}) } as HotkeyModifiers },
+      toggle: settings.toggle,
     };
     setSettings(next);
     // Persist and re-register shortcuts
     void window.api.setHotkeySettings(next).catch((e) => {
       console.warn('Failed to save hotkey settings', e);
+    });
+  };
+
+  const updateToggleKey = (accel: string) => {
+    const next: HotkeySettings = {
+      full: settings.full,
+      region: settings.region,
+      toggle: { accelerator: accel },
+    };
+    setSettings(next);
+    void window.api.setHotkeySettings(next).catch((e) => {
+      console.warn('Failed to save toggle key', e);
     });
   };
 
@@ -210,6 +312,19 @@ function App() {
             <span className="mr-3">Full screen: <span dangerouslySetInnerHTML={{ __html: labelForMods(settings.full.modifiers, '3') }} /></span>
             <span>Region: <span dangerouslySetInnerHTML={{ __html: labelForMods(settings.region.modifiers, '4') }} /></span>
           </div>
+          <button
+            onClick={async () => {
+              try {
+                const v = await window.api.toggleWindow();
+                setVisible(v);
+              } catch (e: any) {
+                setError(e?.message ?? 'Failed to toggle window');
+              }
+            }}
+            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs"
+          >
+            {visible ? `Hide Window (${settings.toggle.accelerator})` : `Show Window (${settings.toggle.accelerator})`}
+          </button>
           <button
             onClick={() => setShowSettings(v => !v)}
             className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs"
@@ -252,6 +367,40 @@ function App() {
                 <input type="checkbox" disabled={!isMac} checked={settings.region.modifiers.command} onChange={e => updateModifier('region', 'command', e.target.checked)} />
                 Command (macOS)
               </label>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-800">
+            <div className="font-medium mb-2">Hide/Show Window shortcut</div>
+            <div className="flex items-center gap-3">
+              <div>
+                <span className="text-slate-400 mr-2">Current:</span>
+                <span className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-slate-200 text-xs">{settings.toggle.accelerator}</span>
+              </div>
+              {!recordingToggle ? (
+                <button
+                  onClick={async () => {
+                    setError(null);
+                    try { await window.api.suspendToggleShortcut(); } catch {}
+                    setRecordingToggle(true);
+                  }}
+                  className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs"
+                >
+                  Record…
+                </button>
+              ) : (
+                <>
+                  <span className="text-amber-400 text-xs">Press any key or combo now…</span>
+                  <button
+                    onClick={async () => {
+                      setRecordingToggle(false);
+                      try { await window.api.resumeToggleShortcut(); } catch {}
+                    }}
+                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs"
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
             </div>
           </div>
           <div className="mt-3 text-slate-400">Changes apply immediately.</div>

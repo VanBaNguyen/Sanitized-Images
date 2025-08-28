@@ -10,6 +10,7 @@ declare global {
   type HotkeySettings = {
     region: { modifiers: HotkeyModifiers };
     full: { modifiers: HotkeyModifiers };
+    toggle: { accelerator: string };
   };
 
   interface Window {
@@ -24,7 +25,11 @@ declare global {
       saveImageZip: (dataUrl: string) => Promise<string | null>;
       displayed: (meta?: any) => void;
       getHotkeySettings: () => Promise<HotkeySettings>;
-      setHotkeySettings: (s: HotkeySettings) => Promise<void>;
+      setHotkeySettings: (s: HotkeySettings) => Promise<boolean>;
+      toggleWindow: () => Promise<boolean>;
+      getWindowVisibility: () => Promise<boolean>;
+      suspendToggleShortcut: () => Promise<void>;
+      resumeToggleShortcut: () => Promise<boolean>;
     };
   }
 }
