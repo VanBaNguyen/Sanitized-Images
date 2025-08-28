@@ -111,6 +111,22 @@ function createWindow() {
     show: false,
   });
 
+  // Handle window close button (red traffic light on macOS)
+  mainWindow.on('close', (e) => {
+    // On macOS, we want to actually quit the app when the window is closed
+    if (process.platform === 'darwin') {
+      app.quit();
+    }
+  });
+
+  // Handle window being closed by the system (e.g., Cmd+Q)
+  app.on('before-quit', () => {
+    // Ensure the window is properly destroyed
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.destroy();
+    }
+  });
+
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
   if (devServerUrl) {
