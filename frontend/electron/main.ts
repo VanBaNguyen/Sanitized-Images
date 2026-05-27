@@ -74,11 +74,13 @@ function acceleratorFor(baseKey: string, mods: HotkeyModifiers): string {
   return parts.join('+');
 }
 
+const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+
 async function sanitizeInMain(dataUrl: string): Promise<string> {
   const scriptPath = path.resolve(__dirname, '../../backend/image_sanitizer.py');
   const args = [scriptPath, '--output-format', 'PNG', '--mode', 'data-url'];
   const out: string = await new Promise((resolve, reject) => {
-    const child = execFile('python3', args, { maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+    const child = execFile(pythonCommand, args, { maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) {
         const msg = stderr?.toString() || err.message;
         return reject(new Error(msg));
@@ -287,7 +289,7 @@ function registerIpc() {
       const scriptPath = path.resolve(__dirname, '../../backend/image_sanitizer.py');
       const args = [scriptPath, '--output-format', 'PNG', '--mode', 'data-url'];
       const sanitized: string = await new Promise((resolve, reject) => {
-        const child = execFile('python3', args, { maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+        const child = execFile(pythonCommand, args, { maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
           if (err) {
             const msg = stderr?.toString() || err.message;
             return reject(new Error(msg));
